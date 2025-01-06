@@ -8,26 +8,35 @@ app = Flask(__name__)
 CORS(app)
 
 DOWNLOAD_PATH = "downloads"
-COOKIES_FILE = "cookies.txt"  # Path to your cookies.txt file
 
 # Ensure the download directory exists
 if not os.path.exists(DOWNLOAD_PATH):
     os.makedirs(DOWNLOAD_PATH)
 
-def download_cookies_from_github():
-    """Download the cookies.txt file from GitHub if not already available."""
+# URL for the cookies.txt file hosted on GitHub
+COOKIES_URL = "https://raw.githubusercontent.com/ytdlp-theone/backend/refs/heads/main/cookies.txt"
+COOKIES_FILE = "cookies.txt"
+
+# Download the cookies file if not already downloaded
+def download_cookies():
     if not os.path.exists(COOKIES_FILE):
-        cookies_url = "https://raw.githubusercontent.com/ytdlp-theone/backend/refs/heads/main/cookies.txt"  # Your provided raw GitHub URL
-        response = requests.get(cookies_url)
-        with open(COOKIES_FILE, 'wb') as f:
-            f.write(response.content)
-        print("Cookies file downloaded.")
-    else:
-        print("Cookies file already exists.")
+        try:
+            response = requests.get(COOKIES_URL)
+            response.raise_for_status()  # Check if the request was successful
+            with open(COOKIES_FILE, 'w') as f:
+                f.write(response.text)
+            print("Cookies file downloaded successfully.")
+        except requests.exceptions.RequestException as e:
+            print(f"Error downloading cookies file: {e}")
+            return False
+    return True
 
 def get_available_formats(url):
     """Retrieve all available formats for a given URL."""
     try:
+        if not download_cookies():
+            return "Failed to download cookies file."
+
         with yt_dlp.YoutubeDL({'noplaylist': True, 'cookies': COOKIES_FILE}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             formats = info_dict.get('formats', [])
@@ -47,14 +56,16 @@ def get_available_formats(url):
     except Exception as e:
         return str(e)
 
-
 def download_media(url, format_id):
     """Download a media file with the specified format ID."""
     try:
+        if not download_cookies():
+            return "Failed to download cookies file."
+
         ydl_opts = {
             'outtmpl': f'{DOWNLOAD_PATH}/%(title)s.%(ext)s',  # Save file with proper name
             'format': format_id,  # Download the selected format
-            'cookies': COOKIES_FILE,  # Use the cookies file for authentication
+            'cookies': COOKIES_FILE,  # Use the downloaded cookies file
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -64,7 +75,6 @@ def download_media(url, format_id):
 
     except Exception as e:
         return str(e)
-
 
 @app.route('/formats', methods=['POST'])
 def get_formats():
@@ -85,7 +95,6 @@ def get_formats():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/download', methods=['POST'])
 def download():
@@ -108,11 +117,7 @@ def download():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 if __name__ == '__main__':
-    # Download cookies from GitHub before starting the app
-    download_cookies_from_github()
-
     # Get the port from the environment variable or default to 5000
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)  # Listen on all available network interfaces and the specified port
