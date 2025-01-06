@@ -2,21 +2,33 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import yt_dlp
 import os
+import requests
 
 app = Flask(__name__)
 CORS(app)
 
 DOWNLOAD_PATH = "downloads"
+COOKIES_FILE = "cookies.txt"  # Path to your cookies.txt file
 
 # Ensure the download directory exists
 if not os.path.exists(DOWNLOAD_PATH):
     os.makedirs(DOWNLOAD_PATH)
 
+def download_cookies_from_github():
+    """Download the cookies.txt file from GitHub if not already available."""
+    if not os.path.exists(COOKIES_FILE):
+        cookies_url = "https://raw.githubusercontent.com/ytdlp-theone/backend/refs/heads/main/cookies.txt"  # Your provided raw GitHub URL
+        response = requests.get(cookies_url)
+        with open(COOKIES_FILE, 'wb') as f:
+            f.write(response.content)
+        print("Cookies file downloaded.")
+    else:
+        print("Cookies file already exists.")
 
 def get_available_formats(url):
     """Retrieve all available formats for a given URL."""
     try:
-        with yt_dlp.YoutubeDL({'noplaylist': True}) as ydl:
+        with yt_dlp.YoutubeDL({'noplaylist': True, 'cookies': COOKIES_FILE}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             formats = info_dict.get('formats', [])
             available_formats = []
@@ -42,6 +54,7 @@ def download_media(url, format_id):
         ydl_opts = {
             'outtmpl': f'{DOWNLOAD_PATH}/%(title)s.%(ext)s',  # Save file with proper name
             'format': format_id,  # Download the selected format
+            'cookies': COOKIES_FILE,  # Use the cookies file for authentication
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -97,6 +110,9 @@ def download():
 
 
 if __name__ == '__main__':
+    # Download cookies from GitHub before starting the app
+    download_cookies_from_github()
+
     # Get the port from the environment variable or default to 5000
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)  # Listen on all available network interfaces and the specified port
